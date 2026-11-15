@@ -16,6 +16,7 @@ pub struct Settings {
     pub glow: bool,
     pub theme: usize,
     pub tail: f32, // секунд тишины в конце
+    pub transparent: bool, // прозрачный фон вместо градиента
 }
 
 impl Default for Settings {
@@ -29,6 +30,7 @@ impl Default for Settings {
             glow: true,
             theme: 0,
             tail: 3.0,
+            transparent: true,
         }
     }
 }

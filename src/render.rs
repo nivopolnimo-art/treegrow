@@ -168,6 +168,9 @@ impl Renderer {
         let (w, h) = (pm.width() as f32, pm.height() as f32);
         let ui = (h / 1080.0).max(0.6);
 
+        if e.settings.transparent {
+            pm.fill(Color::TRANSPARENT);
+        } else {
         // Фон
         let mut bgp = Paint::default();
         bgp.shader = LinearGradient::new(
@@ -180,6 +183,7 @@ impl Renderer {
         .unwrap_or(Shader::SolidColor(rgb(tm.bg[1])));
         if let Some(r) = Rect::from_xywh(0.0, 0.0, w, h) {
             pm.fill_rect(r, &bgp, Transform::identity(), None);
+        }
         }
 
         let cam = e.cam;

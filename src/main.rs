@@ -194,6 +194,7 @@ impl App {
             eng.settings.theme = self.settings.theme;
             eng.settings.thumbs = self.settings.thumbs;
             eng.settings.tail = self.settings.tail;
+            eng.settings.transparent = self.settings.transparent;
             if eng.settings.chrono != self.settings.chrono {
                 restart = true;
             }
@@ -208,7 +209,8 @@ impl App {
         let (_, w, h) = RES[self.exp_res];
         let st = ExportState::new();
         let job = Job { out, w, h, fps: self.exp_fps, crf: 16 };
-        let settings = self.settings.clone();
+        let mut settings = self.settings.clone();
+        settings.transparent = false; // MP4 не умеет прозрачность
         let font = self.font.clone();
         let st2 = st.clone();
         std::thread::spawn(move || export::run(nodes, settings, font, job, st2));
@@ -274,6 +276,7 @@ impl App {
                 ui.add(egui::Slider::new(&mut self.settings.max_media, 0..=3000).text("макс. превью"));
                 ui.checkbox(&mut self.settings.labels, "Подписи папок");
                 ui.checkbox(&mut self.settings.glow, "Свечение");
+                ui.checkbox(&mut self.settings.transparent, "Прозрачный фон");
                 if let Some(eng) = self.engine.as_mut() {
                     ui.checkbox(&mut eng.auto_cam, "Авто-камера (иначе: тяни и крути колесо)");
                 }
@@ -365,7 +368,7 @@ impl App {
 
     fn central(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(egui::Color32::from_rgb(8, 8, 12)))
+            .frame(egui::Frame::none())
             .show(ctx, |ui| {
                 let avail = ui.available_size();
                 let (rect, resp) = ui.allocate_exact_size(avail, egui::Sense::click_and_drag());
@@ -428,6 +431,10 @@ impl App {
 }
 
 impl eframe::App for App {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 0.0]
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_scan(ctx);
         self.advance(ctx);
@@ -442,6 +449,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1480.0, 880.0])
             .with_min_inner_size([900.0, 600.0])
+            .with_transparent(true)
             .with_title("TreeGrow — рост файловой вселенной"),
         ..Default::default()
     };
