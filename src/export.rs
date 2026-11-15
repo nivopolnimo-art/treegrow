@@ -15,6 +15,7 @@ pub struct Job {
     pub h: u32,
     pub fps: u32,
     pub crf: u32,
+    pub alpha: bool, // MOV ProRes 4444 с прозрачностью
 }
 
 /// phase: 0 подготовка, 1 рендер, 2 готово, 3 ошибка, 4 отменено
@@ -76,7 +77,7 @@ fn run_inner(nodes: Arc<Vec<Node>>, settings: Settings, font: Vec<u8>, job: Job,
     st.done.store(0, Ordering::SeqCst);
     st.phase.store(1, Ordering::SeqCst);
 
-    let args: Vec<String> = vec![
+    let mut args: Vec<String> = vec![
         "-y".into(),
         "-hide_banner".into(),
         "-loglevel".into(),
@@ -91,17 +92,20 @@ fn run_inner(nodes: Arc<Vec<Node>>, settings: Settings, font: Vec<u8>, job: Job,
         fps.to_string(),
         "-i".into(),
         "-".into(),
-        "-c:v".into(),
-        "libx264".into(),
-        "-preset".into(),
-        "medium".into(),
-        "-crf".into(),
-        job.crf.to_string(),
-        "-pix_fmt".into(),
-        "yuv420p".into(),
-        "-movflags".into(),
-        "+faststart".into(),
     ];
+    if job.alpha {
+        for a in ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-alpha_bits", "16"] {
+            args.push(a.into());
+        }
+    } else {
+        for a in ["-c:v", "libx264", "-preset", "medium", "-crf"] {
+            args.push(a.into());
+        }
+        args.push(job.crf.to_string());
+        for a in ["-pix_fmt", "yuv420p", "-movflags", "+faststart"] {
+            args.push(a.into());
+        }
+    }
     let mut child = cmd(&ff)
         .args(&args)
         .arg(&job.out)
@@ -114,6 +118,7 @@ fn run_inner(nodes: Arc<Vec<Node>>, settings: Settings, font: Vec<u8>, job: Job,
 
     let renderer = Renderer::new(font);
     let mut pm = Pixmap::new(job.w, job.h).ok_or_else(|| "неверный размер кадра".to_string())?;
+    let mut buf: Vec<u8> = Vec::new();
 
     for f in 0..frames {
         if st.cancel.load(Ordering::SeqCst) {
@@ -127,9 +132,13 @@ fn run_inner(nodes: Arc<Vec<Node>>, settings: Settings, font: Vec<u8>, job: Job,
             eng.step(&media);
         }
         renderer.render(&mut pm, &eng, &media);
-        stdin
-            .write_all(pm.data())
-            .map_err(|e| format!("ffmpeg закрылся досрочно: {e}"))?;
+        let res = if job.alpha {
+            unpremultiply(pm.data(), &mut buf);
+            stdin.write_all(&buf)
+        } else {
+            stdin.write_all(pm.data())
+        };
+        res.map_err(|e| format!("ffmpeg закрылся досрочно: {e}"))?;
         st.done.store(f + 1, Ordering::Relaxed);
     }
     drop(stdin);
@@ -139,4 +148,18 @@ fn run_inner(nodes: Arc<Vec<Node>>, settings: Settings, font: Vec<u8>, job: Job,
     }
     st.phase.store(2, Ordering::SeqCst);
     Ok(())
+}
+
+/// tiny-skia хранит цвет с премультипликацией, ffmpeg ждёт обычный (straight) альфа-канал.
+fn unpremultiply(src: &[u8], buf: &mut Vec<u8>) {
+    buf.clear();
+    buf.extend_from_slice(src);
+    for px in buf.chunks_exact_mut(4) {
+        let a = px[3] as u32;
+        if a > 0 && a < 255 {
+            for c in px.iter_mut().take(3) {
+                *c = ((*c as u32 * 255) / a).min(255) as u8;
+            }
+        }
+    }
 }

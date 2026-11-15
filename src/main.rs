@@ -60,6 +60,7 @@ struct App {
     export: Option<Arc<ExportState>>,
     exp_res: usize,
     exp_fps: u32,
+    export_alpha: bool,
     msg: String,
 }
 
@@ -104,6 +105,7 @@ impl App {
             export: None,
             exp_res: 1,
             exp_fps: 30,
+            export_alpha: false,
             msg: String::new(),
         }
     }
@@ -208,9 +210,9 @@ impl App {
         let Some(nodes) = self.nodes.clone() else { return };
         let (_, w, h) = RES[self.exp_res];
         let st = ExportState::new();
-        let job = Job { out, w, h, fps: self.exp_fps, crf: 16 };
+        let job = Job { out, w, h, fps: self.exp_fps, crf: 16, alpha: self.export_alpha };
         let mut settings = self.settings.clone();
-        settings.transparent = false; // MP4 не умеет прозрачность
+        settings.transparent = self.export_alpha; // прозрачность только в MOV
         let font = self.font.clone();
         let st2 = st.clone();
         std::thread::spawn(move || export::run(nodes, settings, font, job, st2));
@@ -317,6 +319,7 @@ impl App {
                     ui.radio_value(&mut self.exp_fps, 30, "30 к/с");
                     ui.radio_value(&mut self.exp_fps, 60, "60 к/с");
                 });
+                ui.checkbox(&mut self.export_alpha, "Прозрачный фон (MOV ProRes 4444, для Premiere)");
 
                 let exporting = self.export.as_ref().map(|s| s.phase.load(Ordering::SeqCst) < 2).unwrap_or(false);
                 if let Some(st) = self.export.clone() {
@@ -351,9 +354,10 @@ impl App {
                     .add_enabled(can, egui::Button::new("Сохранить видео…").min_size(egui::vec2(ui.available_width(), 34.0)))
                     .clicked()
                 {
+                    let (name, ext) = if self.export_alpha { ("treegrow.mov", "mov") } else { ("treegrow.mp4", "mp4") };
                     if let Some(out) = rfd::FileDialog::new()
-                        .add_filter("MP4 видео", &["mp4"])
-                        .set_file_name("treegrow.mp4")
+                        .add_filter("Видео", &[ext])
+                        .set_file_name(name)
                         .save_file()
                     {
                         self.start_export(out);
