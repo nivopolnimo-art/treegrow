@@ -1,0 +1,28 @@
+name: build-windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Pack exe + ffmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ff
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/treegrow.exe dist/
+          Copy-Item (Get-ChildItem -Recurse ff -Filter ffmpeg.exe | Select-Object -First 1).FullName dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TreeGrow-windows
+          path: dist
